@@ -1,0 +1,7 @@
+playwright==1.38.0
+beautifulsoup4==4.12.2
+aiohttp==3.8.5
+aiofiles==23.2.1
+python-dateutil==2.8.2
+lxml==4.9.3
+requests==2.31.0
