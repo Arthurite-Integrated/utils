@@ -187,45 +187,80 @@ class WebsiteScraper:
                 self.found_urls.add(full_url)
     
     def extract_content(self, url, html_content):
-        """Extract meaningful content from the page."""
+        """Extract all content from the page without assuming any particular CMS structure."""
         if not html_content:
             return "Failed to retrieve content"
             
         soup = BeautifulSoup(html_content, 'html.parser')
         
-        # Remove script and style elements
-        for script_or_style in soup(['script', 'style', 'nav', 'footer', 'header']):
-            script_or_style.decompose()
+        # Remove script, style, and other non-content elements
+        for element in soup(['script', 'style', 'meta', 'noscript', 'svg', 'iframe']):
+            element.decompose()
             
         # Get title
         title = soup.title.string if soup.title else "No Title"
         
-        # Try to get the main content
-        main_content = None
+        # Extract all text from the body
+        main_text = ""
+        if soup.body:
+            main_text = soup.body.get_text(separator='\n', strip=True)
+            main_text = re.sub(r'\n+', '\n', main_text)  # Remove multiple newlines
+            main_text = re.sub(r'\s+', ' ', main_text)   # Normalize whitespace
         
-        # Check for common content containers
-        content_containers = [
-            soup.find('main'),
-            soup.find('article'),
-            soup.find('div', class_=re.compile('content|main|post|article')),
-            soup.find('div', id=re.compile('content|main|post|article')),
-            soup.find('section', class_=re.compile('content|main')),
-            soup.body
-        ]
+        # Extract all links
+        links_info = []
+        for link in soup.find_all('a', href=True):
+            link_text = link.get_text(strip=True)
+            if link_text:  # Only include links with text
+                full_url = urljoin(url, link['href'])
+                links_info.append(f"- {link_text}: {full_url}")
         
-        for container in content_containers:
-            if container:
-                main_content = container
-                break
-                
-        # Clean up the text
-        if main_content:
-            text = main_content.get_text(separator='\n', strip=True)
-            text = re.sub(r'\n+', '\n', text)  # Remove multiple newlines
-        else:
-            text = "No content found"
+        links_section = ""
+        if links_info:
+            links_section = "\n\nLinks found on page:\n" + "\n".join(links_info)
         
-        return f"Title: {title}\n\n{text}"
+        # Extract all images
+        images_info = []
+        for img in soup.find_all('img', src=True):
+            img_alt = img.get('alt', 'No alt text')
+            img_src = urljoin(url, img['src'])
+            images_info.append(f"- Image: {img_alt} ({img_src})")
+        
+        images_section = ""
+        if images_info:
+            images_section = "\n\nImages found on page:\n" + "\n".join(images_info)
+        
+        # Extract headings for better structure understanding
+        headings = []
+        for i in range(1, 7):  # h1 through h6
+            for heading in soup.find_all(f'h{i}'):
+                heading_text = heading.get_text(strip=True)
+                if heading_text:
+                    headings.append(f"H{i}: {heading_text}")
+        
+        headings_section = ""
+        if headings:
+            headings_section = "\n\nHeadings on page:\n" + "\n".join(headings)
+        
+        # Also try to identify the main content area by finding the div with the most text
+        # This can help to separate the main content from navigation, sidebars, etc.
+        main_content_area = ""
+        divs = soup.find_all('div')
+        max_length = 0
+        longest_div = None
+        
+        for div in divs:
+            div_text = div.get_text(strip=True)
+            if len(div_text) > max_length:
+                max_length = len(div_text)
+                longest_div = div
+        
+        if longest_div and max_length > 200:  # Only if substantial content
+            main_content_area = "\n\nMain Content Area:\n" + longest_div.get_text(separator='\n', strip=True)
+            main_content_area = re.sub(r'\n+', '\n', main_content_area)
+        
+        # Put it all together
+        return f"Title: {title}\n\n{headings_section}\n\nFull Page Text:\n{main_text}{links_section}{images_section}{main_content_area}"
     
     def save_content(self, url, content):
         """Save the extracted content to the output file."""

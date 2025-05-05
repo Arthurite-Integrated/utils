@@ -1,0 +1,4 @@
+*_files
+*.txt
+
+!s3_bucket_policy.txt
